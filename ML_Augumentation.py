@@ -8,8 +8,6 @@ import os
 from numpy.core.fromnumeric import size
 
 
-##random test comment 
-## still commentign to get used to git
 
 
 path="/home/data/data/kodeiri/ML_project/train_aug_buffer/" ##dir to save agumented files
