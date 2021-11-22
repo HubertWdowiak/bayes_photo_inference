@@ -11,6 +11,7 @@ from numpy.core.fromnumeric import size
 ##random test comment 
 
 
+
 path="/home/data/data/kodeiri/ML_project/train_aug_buffer/" ##dir to save agumented files
 dir_path="/home/data/data/kodeiri/ML_project/train_aug_buffer" ## dir to get original photos from
 classes=['Adult','Senior','Young'] ## labels
@@ -23,6 +24,9 @@ dim = 100
 num_of_pics=round(len(os.listdir(path+classes[el_num]))*0.47)
 
 
+
+
+## radnom new line
 
 
 ## for batch size -- set it to the amount of data you want to add to exisitng database
