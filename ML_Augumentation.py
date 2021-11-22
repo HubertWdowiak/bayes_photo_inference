@@ -8,6 +8,7 @@ import os
 from numpy.core.fromnumeric import size
 
 
+##random test comment 
 
 
 
@@ -22,6 +23,10 @@ dim = 100
 
 num_of_pics=round(len(os.listdir(path+classes[el_num]))*0.47)
 
+
+
+
+## radnom new line
 
 
 ## for batch size -- set it to the amount of data you want to add to exisitng database
