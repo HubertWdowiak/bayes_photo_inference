@@ -21,6 +21,9 @@ from tensorflow.keras.preprocessing import image
 ## photos inproper for the network (no face detection)
 ## 3. Use method all_img_loop on folders with your inputs
 ## 4. You can load the photos to the netowrk calling 
+## predict_on_examples method. It is possible to customize 
+## input to also display heatmap of the photos in the folder
+## and create templates of heatmap footprints
 
 
 
@@ -90,9 +93,11 @@ def predict_on_examples(dirpath,ground_truth,display_image=False, display_heatma
             heatmap /= max_heat
 
             img = cv2.imread(img_path)
+            img = cv2.resize(img, res)
             heatmap = heatmap.squeeze()
             
             heatmap = cv2.resize(heatmap, res)
+            print(heatmap.shape)
             heatmap = cv2.applyColorMap(np.uint8(255*heatmap), cv2.COLORMAP_HOT)
             img_hm = heatmap * intensity + img    
             img_hm = cv2.cvtColor(img_hm.astype('float32'), cv2.COLOR_BGR2RGB)
