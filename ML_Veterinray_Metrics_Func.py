@@ -43,7 +43,7 @@ CATEGORIES = ["Adult", "Senior", "Young"]
 
 def predDecoder(prediction):
     x = np.argmax(prediction)
-    #print("Prediction: " + CATEGORIES[x])
+    print("Prediction: " + CATEGORIES[x])
     prob = prediction[x]
     print("Confidence: "+ str(prob))
     return (CATEGORIES[x])
@@ -97,7 +97,6 @@ def predict_on_examples(dirpath,ground_truth,display_image=False, display_heatma
             heatmap = heatmap.squeeze()
             
             heatmap = cv2.resize(heatmap, res)
-            print(heatmap.shape)
             heatmap = cv2.applyColorMap(np.uint8(255*heatmap), cv2.COLORMAP_HOT)
             img_hm = heatmap * intensity + img    
             img_hm = cv2.cvtColor(img_hm.astype('float32'), cv2.COLOR_BGR2RGB)
