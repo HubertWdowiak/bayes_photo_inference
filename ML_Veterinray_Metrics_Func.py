@@ -6,15 +6,14 @@ import tensorflow.keras.backend as K
 import os
 import dlib
 from imutils import face_utils
-from sklearn.metrics import mean_squared_error as MSE
 import numpy as np
 import os
 import cv2
 import dlib
 import shutil
 from tensorflow.keras.preprocessing import image
-
-
+from mpl_toolkits.axes_grid1 import ImageGrid
+import string
 ## input pipeline to preprocess the photo for the model:
 ## 1. Put photos you want to use in a folder/folders
 ## 2. Prepare thrash folders for every folder to store
@@ -48,7 +47,7 @@ def predDecoder(prediction):
     print("Confidence: "+ str(prob))
     return (CATEGORIES[x])
 
-def Image_preprocessor(input_path,res=(100,100)):
+def training_preprocessor(input_path : string, res : tuple =(100,100)):
     img = image.load_img(input_path, target_size=res)
     img = np.expand_dims(img, axis=0)
     img = img.astype(np.float32)
@@ -56,13 +55,47 @@ def Image_preprocessor(input_path,res=(100,100)):
     return img
 
 
+def slice_img(image: np.ndarray, kernel_size: tuple):
+
+    img_height, img_width, channels = image.shape
+    tile_height, tile_width = kernel_size
+
+    tiled_array = image.reshape(img_height // tile_height,
+                                tile_height,
+                                img_width // tile_width,
+                                tile_width,
+                                channels)
+    tiled_array = tiled_array.swapaxes(1, 2)
+    tiled_array = tiled_array.reshape(-1,10,10,3)
+    return tiled_array
 
 
+def slice_visualizer(sliced_img : np.ndarray, slice_size : tuple):
+    fig = plt.figure(figsize=(4., 4.))
+    grid = ImageGrid(fig, 111,  # similar to subplot(111)
+                    nrows_ncols=slice_size,  # creates 2x2 grid of axes
+                    #axes_pad=0.1,  # pad between axes in inch.
+                    )
 
-def predict_on_examples(dirpath,ground_truth,display_image=False, display_heatmap = False, res = (100,100), intensity = 0.8):
-    #iteration_number=len(os.listdir(dirpath))
-    iteration_number=5
-    i=0
+    for ax, im in zip(grid, sliced_img):
+        # Iterating over the grid returns the Axes.
+        ax.imshow(im)
+
+    plt.show()
+
+
+def predict_on_examples(dirpath : string,
+ground_truth='Unknown',
+display_image=False, 
+display_heatmap = False, 
+display_template=False,
+iteration_number = 0, 
+res = (100,100), 
+intensity = 0.8):
+    if iteration_number == 0:
+        iteration_number=len(os.listdir(dirpath))
+    else:
+        iteration_number =  iteration_number
     piclist=os.listdir(dirpath)
     hm_sum = np.zeros((100, 100, 3, 1))
     for i in range(iteration_number):
@@ -75,7 +108,7 @@ def predict_on_examples(dirpath,ground_truth,display_image=False, display_heatma
         preds = model.predict(img)[0]
         predDecoder(preds)
         print("Ground_truth: "+ ground_truth)
-        if display_heatmap == True:
+        if display_heatmap == True or display_template == True:
             conv_layer = model.get_layer(index=0)
             heatmap_model = tf.keras.models.Model([model.inputs], [conv_layer.output, model.output])
             with tf.GradientTape() as gtape:
@@ -102,39 +135,42 @@ def predict_on_examples(dirpath,ground_truth,display_image=False, display_heatma
             img_hm = cv2.cvtColor(img_hm.astype('float32'), cv2.COLOR_BGR2RGB)
             img_hm = img_hm/np.amax(img_hm)
 
-            fig, ax = plt.subplots(1,3)
-            ax[0].imshow(img)
-            ax[0].set_title("Input image")
-            ax[1].imshow(img_hm)
-            ax[1].set_title("Image with heatmap")
-            ax[2].matshow(heatmap)
-            ax[2].set_title("Heatmap")
-            plt.show()
+            if display_heatmap == True:
+                fig, ax = plt.subplots(1,3)
+                ax[0].imshow(img)
+                ax[0].set_title("Input image")
+                ax[1].imshow(img_hm)
+                ax[1].set_title("Image with heatmap")
+                ax[2].matshow(heatmap)
+                ax[2].set_title("Heatmap")
+                plt.show()
+            if display_template == True:
+                features = features_detector(img)
+                if len(features):
+                    img = img_rotate(img, features, res=res)
+                    heatmap = img_rotate(heatmap, features, res=res)
 
-            features = features_detector(img)
-            if len(features):
-                img = img_rotate(img, features, res=res)
-                heatmap = img_rotate(heatmap, features, res=res)
-
-            features = features_detector(img)
-            if len(features):
-                img = translate_image(img, (50, 50), features,  res=res)
-                heatmap = translate_image(heatmap, (50, 50), features,  res=res)
-                hm_sum = np.append(hm_sum, heatmap.reshape((100, 100, 3, 1)), axis=3)
-    
-                if i == iteration_number-1:
-                    hm_sum_disp = hm_sum.sum(axis=3)
-                    hm_mean = hm_sum.mean(axis=3)
-                    hm_median = np.median((hm_sum - hm_sum.mean()) / hm_sum.std() , axis=3)
-                    fig, ax = plt.subplots(1, 3, figsize=(20, 30))
-                    ax[0].matshow(hm_sum_disp)
-                    ax[0].title.set_text('heatmaps sum')
-                    ax[1].matshow(hm_mean)
-                    ax[1].title.set_text('heatmaps mean')
-                    ax[2].matshow(hm_median)
-                    ax[2].title.set_text('heatmaps median')
-                    plt.show()
-                    return hm_sum, hm_sum_disp, hm_mean, hm_median
+                features = features_detector(img)
+                if len(features):
+                    img = translate_image(img, (50, 50), features,  res=res)
+                    heatmap = translate_image(heatmap, (50, 50), features,  res=res)
+                    hm_sum = np.append(hm_sum, heatmap.reshape((100, 100, 3, 1)), axis=3)
+        
+                    if i == iteration_number-1:
+                        hm_sum_disp = hm_sum.sum(axis=3)
+                        hm_mean = hm_sum.mean(axis=3)
+                        hm_median = np.median((hm_sum - hm_sum.mean()) / hm_sum.std() , axis=3)
+                        fig, ax = plt.subplots(1, 3, figsize=(20, 30))
+                        ax[0].matshow(hm_sum_disp)
+                        ax[0].title.set_text('heatmaps sum')
+                        ax[1].matshow(hm_mean)
+                        ax[1].title.set_text('heatmaps mean')
+                        ax[2].matshow(hm_median)
+                        ax[2].title.set_text('heatmaps median')
+                        plt.show()
+    print(i)
+    if display_template == True:
+        return hm_sum, hm_sum_disp, hm_mean, hm_median
 
 ## heatmap loader
 ## loads the heatmap from numpy array saved as txt file
@@ -325,7 +361,7 @@ def Face_detector(img):
 ## folder
 ## run only ONCE on given folder
 
-def img_preprocess(src,thrash):
+def img_preprocess(src : string, thrash : string):
   for filename in os.listdir(src):
     string_e=src+filename
     img = cv2.imread(string_e)
@@ -350,7 +386,7 @@ def img_preprocess(src,thrash):
 ## returns max pixel value in given images
 
 
-def max_val_ssim (img1, img2=None, single_arg = False):
+def max_val_ssim (img1 : tf.Tensor, img2 : tf.Tensor = None, single_arg : bool = False):
 
     if single_arg==True:
         max1 = tf.math.reduce_max(img1,axis=(0, 1))
@@ -363,5 +399,7 @@ def max_val_ssim (img1, img2=None, single_arg = False):
     max2 = tf.math.reduce_max(max2,axis=(0, 1))
     max_val = tf.math.maximum(max1,max2).numpy()
     return max_val
+
+
 
 
