@@ -1,5 +1,4 @@
 from matplotlib import pyplot as plt
-from tensorflow import keras
 import cv2
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -14,6 +13,7 @@ import shutil
 from tensorflow.keras.preprocessing import image
 from mpl_toolkits.axes_grid1 import ImageGrid
 import string
+
 ## input pipeline to preprocess the photo for the model:
 ## 1. Put photos you want to use in a folder/folders
 ## 2. Prepare thrash folders for every folder to store
@@ -30,15 +30,12 @@ import string
 
 ## Load model
 model = tf.keras.models.load_model("/home/data/data/kodeiri/ML_project/saved_model/my_model4")
-senior_path = "/home/data/data/kodeiri/ML_project/HM/Senior.txt"
-young_path = "/home/data/data/kodeiri/ML_project/HM/Young.txt"
-adult_path = "/home/data/data/kodeiri/ML_project/HM/Adult.txt"
-## Load heatmap template for each class
-HM_shape = (100,100,3) ## template heatmap shape DO NOT CHANGE, only if the original shape changed before saving
 ## Load detector libraries
 detector = dlib.cnn_face_detection_model_v1('/home/data/data/kodeiri/ML_project/dogHeadDetector.dat')
 predictor = dlib.shape_predictor('/home/data/data/kodeiri/ML_project/landmarkDetector.dat')
 CATEGORIES = ["Adult", "Senior", "Young"]
+
+## function to decode prediction results
 
 def predDecoder(prediction):
     x = np.argmax(prediction)
@@ -54,6 +51,11 @@ def training_preprocessor(input_path : string, res : tuple =(100,100)):
     img/=255
     return img
 
+## Method dividing input image into smaller parts
+## As an input it takes np.ndarray describing RGB image
+## and tuple describing dimensions of demanded smaller slices
+## it returns 4d np.ndarray containing subsequent slices of the 
+## image
 
 def slice_img(image: np.ndarray, kernel_size: tuple):
 
@@ -69,6 +71,9 @@ def slice_img(image: np.ndarray, kernel_size: tuple):
     tiled_array = tiled_array.reshape(-1,10,10,3)
     return tiled_array
 
+## Method to visualize sliced image by combining together all slices
+## it takes 4d np.ndarray with the slices as an input together with 
+## tuple describing slice size
 
 def slice_visualizer(sliced_img : np.ndarray, slice_size : tuple):
     fig = plt.figure(figsize=(4., 4.))
@@ -83,6 +88,13 @@ def slice_visualizer(sliced_img : np.ndarray, slice_size : tuple):
 
     plt.show()
 
+## method using trained model to asses age of a dog in input image
+## can be configured to display the image, heatmap or heatmap template
+## of many inputs
+## as an input it takes path to directory containing photos you want to use
+## rest of the parameters are pre-defined and can be changed to obtain proper results
+## if template creator mode is on it returns np.ndarrays with sum of heatmaps
+## it's mean and median value
 
 def predict_on_examples(dirpath : string,
 ground_truth='Unknown',
@@ -104,7 +116,7 @@ intensity = 0.8):
             img = cv2.imread(img_path)
             plt.imshow(img)
             plt.show()
-        img = Image_preprocessor(img_path)
+        img = training_preprocessor(img_path)
         preds = model.predict(img)[0]
         predDecoder(preds)
         print("Ground_truth: "+ ground_truth)
@@ -183,11 +195,6 @@ def Hm_loader(path):
     template = template_pre.reshape(template_pre.shape[0], template_pre.shape[1] // 3, 3)
     return template
 
-
-
-Senior_template = Hm_loader(senior_path)
-Adult_template = Hm_loader(adult_path)
-Young_template = Hm_loader(young_path)
 
 ## method that detects an image on white background
 ## takes an image as input
