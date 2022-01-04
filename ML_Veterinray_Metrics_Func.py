@@ -1,11 +1,14 @@
 from matplotlib import pyplot as plt
+import cv2
 import tensorflow as tf
 import tensorflow.keras.backend as K
+import os
+import dlib
 from imutils import face_utils
 import numpy as np
-import dlib
 import os
 import cv2
+import dlib
 import shutil
 from tensorflow.keras.preprocessing import image
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -16,17 +19,17 @@ import string
 ## 2. Prepare thrash folders for every folder to store
 ## photos inproper for the network (no face detection)
 ## 3. Use method all_img_loop on folders with your inputs
-## 4. You can load the photos to the netowrk calling
-## predict_on_examples method. It is possible to customize
+## 4. You can load the photos to the netowrk calling 
+## predict_on_examples method. It is possible to customize 
 ## input to also display heatmap of the photos in the folder
 ## and create templates of heatmap footprints
 
 
 ## Load model
-model = tf.keras.models.load_model("/Users/hwdowiak/Desktop/inzynierka/data/my_model4")
+model = tf.keras.models.load_model("/home/data/data/kodeiri/ML_project/saved_model/my_model4")
 ## Load detector libraries
-detector = dlib.cnn_face_detection_model_v1('/Users/hwdowiak/Desktop/inzynierka/data/dogHeadDetector.dat')
-predictor = dlib.shape_predictor('/Users/hwdowiak/Desktop/inzynierka/data/landmarkDetector.dat')
+detector = dlib.cnn_face_detection_model_v1('/home/data/data/kodeiri/ML_project/dogHeadDetector.dat')
+predictor = dlib.shape_predictor('/home/data/data/kodeiri/ML_project/landmarkDetector.dat')
 CATEGORIES = ["Adult", "Senior", "Young"]
 
 
@@ -51,45 +54,25 @@ def training_preprocessor(input_path: string, res: tuple = (100, 100)):
 ## Method dividing input image into smaller parts
 ## As an input it takes np.ndarray describing RGB image
 ## and tuple describing dimensions of demanded smaller slices
-## it returns 4d np.ndarray containing subsequent slices of the
+## it returns 4d np.ndarray containing subsequent slices of the 
 ## image
 
 def slice_img(image: np.ndarray, kernel_size: tuple):
+    img_height, img_width, channels = image.shape
     tile_height, tile_width = kernel_size
-    if len(image.shape) == 3:
-        img_height, img_width, channels = image.shape
-        tiled_array = image.reshape(img_height // tile_height,
-                                    tile_height,
-                                    img_width // tile_width,
-                                    tile_width,
-                                    channels)
-        tiled_array = tiled_array.swapaxes(1, 2)
-        tiled_array = tiled_array.reshape(-1, kernel_size[0], kernel_size[1], 3)
 
-    elif len(image.shape) == 2:
-        img_height, img_width = image.shape
-        tiled_array = image.reshape(img_height // tile_height,
-                                    tile_height,
-                                    img_width // tile_width,
-                                    tile_width)
-
-        tiled_array = tiled_array.swapaxes(1, 2)
-        tiled_array = tiled_array.reshape(-1, kernel_size[0], kernel_size[1])
-
-    elif len(image.shape) == 1:
-        img_height = int(np.sqrt(image.shape[0]))
-        img_width = int(np.sqrt(image.shape[0]))
-        tiled_array = image.reshape(img_height // tile_height,
-                                    tile_height,
-                                    img_width // tile_width,
-                                    tile_width)
-        tiled_array = tiled_array.swapaxes(1, 2)
-        tiled_array = tiled_array.reshape(-1, kernel_size[0], kernel_size[1])
+    tiled_array = image.reshape(img_height // tile_height,
+                                tile_height,
+                                img_width // tile_width,
+                                tile_width,
+                                channels)
+    tiled_array = tiled_array.swapaxes(1, 2)
+    tiled_array = tiled_array.reshape(-1, 10, 10, 3)
     return tiled_array
 
 
 ## Method to visualize sliced image by combining together all slices
-## it takes 4d np.ndarray with the slices as an input together with
+## it takes 4d np.ndarray with the slices as an input together with 
 ## tuple describing slice size
 
 def slice_visualizer(sliced_img: np.ndarray, slice_size: tuple):
@@ -221,6 +204,7 @@ def Hm_loader(path):
 
 def photo_detector(src_image, res=(100, 100)):
     img_in = cv2.cvtColor(src_image, cv2.COLOR_BGR2RGB)
+
     gray = cv2.cvtColor(img_in, cv2.COLOR_BGR2GRAY)
     height, width = gray.shape
 
@@ -234,6 +218,7 @@ def photo_detector(src_image, res=(100, 100)):
     result_image = src_image[row:row + photo_height, column: column + photo_width]
 
     return cv2.resize(result_image, res)
+
 
 ## method locating facial features on the dog's face
 ## takes an image as an input
@@ -321,6 +306,7 @@ def check_triangle_angles(face_features, max_angle=70.0):
         return True
 
     return False
+
 
 ## method detecting dogs face
 ## takes image as an input
@@ -421,3 +407,6 @@ def max_val_ssim(img1: tf.Tensor, img2: tf.Tensor = None, single_arg: bool = Fal
     max2 = tf.math.reduce_max(max2, axis=(0, 1))
     max_val = tf.math.maximum(max1, max2).numpy()
     return max_val
+
+
+
