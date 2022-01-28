@@ -71,9 +71,13 @@ def get_age_category(age: int) -> str:
         return 'senior'
 
 
-def read_data(path: str) -> list[(str, str, str)]:
+def read_data(path: str, only_dirs: bool = True) -> list[(str, str, str)]:
+    # .DS_store is some kind of thrash
     disease_dirs = os.listdir(path)
-    disease_dirs.remove('.DS_Store')
+    try:
+        disease_dirs.remove('.DS_Store')
+    except:
+        pass
     final_paths = []
     for disease_dir in disease_dirs:
         current_diseases = []
@@ -82,10 +86,17 @@ def read_data(path: str) -> list[(str, str, str)]:
                 current_diseases.append(disease)
         for year_dir in os.listdir(f'{path}/{disease_dir}'):
             if year_dir != '.DS_Store':
-                final_paths.append((f'{path}/{disease_dir}/{year_dir}', current_diseases,
-                                    get_age_category(int(year_dir[:-1]))))
+                if only_dirs:
+                    final_paths.append((f'{path}/{disease_dir}/{year_dir}', current_diseases,
+                                        get_age_category(int(year_dir[:-1]))))
+                else:
+                    for photo in os.listdir(f'{path}/{disease_dir}/{year_dir}'):
+                        if photo != '.DS_Store':
+                            final_paths.append((f'{path}/{disease_dir}/{year_dir}/{photo}', current_diseases,
+                                                get_age_category(int(year_dir[:-1]))))
 
     return final_paths
+
 
 def slice_img(image: np.ndarray, kernel_size: tuple):
     tile_height, tile_width = kernel_size
@@ -119,3 +130,62 @@ def slice_img(image: np.ndarray, kernel_size: tuple):
         tiled_array = tiled_array.swapaxes(1, 2)
         tiled_array = tiled_array.reshape(-1, kernel_size[0], kernel_size[1])
     return tiled_array
+
+
+def sum_mistakes(predictions: list, real_diseases: list):
+    final_vector = dict()
+    for prediction, real_disease in zip(predictions, real_diseases):
+        for k, v in prediction.items():
+            final_vector[k] = final_vector.get(k, {})
+            if set(real_disease) == set(k):
+                final_vector[k]['True positive'] = final_vector[k].get('True positive', 0) + v
+                final_vector[k]['False negative'] = final_vector[k].get('False negative', 0) + 1 - v
+                final_vector[k]['True negative'] = final_vector[k].get('True negative', 0)
+                final_vector[k]['False positive'] = final_vector[k].get('False positive', 0)
+                final_vector[k]['Positive'] = final_vector[k].get('Positive', 0) + 1
+            else:
+                final_vector[k]['True positive'] = final_vector[k].get('True positive', 0)
+                final_vector[k]['False negative'] = final_vector[k].get('False negative', 0)
+                final_vector[k]['True negative'] = final_vector[k].get('True negative', 0) + 1 - v
+                final_vector[k]['False positive'] = final_vector[k].get('False positive', 0) + v
+                final_vector[k]['Negative'] = final_vector[k].get('Negative', 0) + 1
+    return final_vector
+
+
+def get_precision_recall(vector):
+    precisions = {}
+    recalls = {}
+    for disease_combo, values in vector.items():
+        try:
+            if values['Positive'] > 0:
+                precisions[disease_combo] = values['True positive'] / (
+                            values['True positive'] + values['False positive'])
+                recalls[disease_combo] = values['True positive'] / (values['True positive'] + values['False negative'])
+        except KeyError:
+            pass
+    return precisions, recalls
+
+
+def weighted_f_score(predictions: list, real_diseases: list, beta: float = 1):
+    """
+    example input data:
+        predictions = [{('blind',): 0.3, ('bone_cancer',): 0.4, ('blind', 'bone_cancer'): 0},
+                   {('blind',): 0.9, ('bone_cancer',): 0.1, ('blind', 'bone_cancer'): 0.2},
+                   {('blind',): 0.1, ('bone_cancer',): 0.7, ('blind', 'bone_cancer'): 0.2}]
+
+        real_diseases = [('blind',), ('blind',), ('bone_cancer',)]
+    """
+    scores = {}
+    vector = sum_mistakes(predictions, real_diseases)
+    precisions, recalls = get_precision_recall(vector)
+
+    total_positive = 0
+    total_score_sum = 0
+    for disease in precisions:
+        scores[disease] = (1 + beta ** 2) * (precisions[disease] * recalls[disease]) / (
+                (beta ** 2) * precisions[disease] + recalls[disease])
+        amount_of_positive_samples = vector[disease]['Positive']
+        total_positive += amount_of_positive_samples
+        total_score_sum += scores[disease] * amount_of_positive_samples
+
+    return total_score_sum / total_positive

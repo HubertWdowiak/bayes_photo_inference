@@ -1,7 +1,8 @@
 from collections.abc import Iterable
 from itertools import combinations
-from utils import simplify_image, get_heatmap, read_data
+from utils import simplify_image, get_heatmap, read_data, weighted_f_score
 from PIL import Image
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 import os
@@ -25,16 +26,23 @@ class BayesInference:
 
     def load_data_with_path(self, image_directory_path: str, age_on_images: str = 'adult', diseases: Iterable[str] = (),
                             load_heatmap: bool = False) -> None:
-
         data = np.empty((0, self.num_of_pixel), int)
-        for file in os.listdir(image_directory_path):
+
+        try:
             if load_heatmap:
-                single_image_data = get_heatmap(f'{image_directory_path}/{file}')
+                single_image_data = get_heatmap(image_directory_path)
             else:
-                image = Image.open(f'{image_directory_path}/{file}').convert('L')
+                image = Image.open(image_directory_path).convert('L')
                 single_image_data = np.asarray(image)
             data = np.vstack([data, single_image_data.flatten()])
-
+        except IsADirectoryError:
+            for file in os.listdir(image_directory_path):
+                if load_heatmap:
+                    single_image_data = get_heatmap(f'{image_directory_path}/{file}')
+                else:
+                    image = Image.open(f'{image_directory_path}/{file}').convert('L')
+                    single_image_data = np.asarray(image)
+                data = np.vstack([data, single_image_data.flatten()])
         self.load_data(images_data=data, age_on_images=age_on_images, diseases_on_images=diseases)
 
     def load_data(self, images_data: np.ndarray, age_on_images: str = None,
@@ -69,9 +77,9 @@ class BayesInference:
             return np.sum(similar_photos) / encoded_images_data.shape[0] + 1e-2
         return 1e-2
 
-    def get_diseases_probabilities(self, new_image_path: str, encode_bits_num: int = 8,
+    def get_diseases_probabilities(self, new_image_path: str, encoding_categories: int = 8,
                                    similarity_threshold: float = 0.9, pooling_slice_area: int = 1,
-                                   pooling_function=np.max):
+                                   pooling_function=np.max, only_prior: bool = False):
 
         new_image_data = np.asarray(Image.open(f'{new_image_path}').convert('L'))
         new_image_pooled = simplify_image(new_image_data, (pooling_slice_area, pooling_slice_area),
@@ -82,8 +90,10 @@ class BayesInference:
         new_image_pooled = new_image_pooled.reshape(1, -1)
         images_data_pooled = images_data_pooled.reshape(images_data_pooled.shape[0], -1)
 
-        new_image_encoded_data = self.one_hot_encode_images(data=new_image_pooled, bits_num=encode_bits_num)
-        encoded_images_data = self.one_hot_encode_images(data=images_data_pooled, bits_num=encode_bits_num)
+        new_image_encoded_data = self.one_hot_encode_images(data=new_image_pooled,
+                                                            amount_of_categories=encoding_categories)
+        encoded_images_data = self.one_hot_encode_images(data=images_data_pooled,
+                                                         amount_of_categories=encoding_categories)
 
         result_probabilities = {}
         denominator = self.get_distribution(new_image_encoded_data, encoded_images_data, similarity_threshold)
@@ -94,17 +104,19 @@ class BayesInference:
             prior = len(indexes) / self.diseases_data.shape[0]
             likelihood = self.get_distribution(new_image_encoded_data, encoded_images_data[indexes],
                                                similarity_threshold)
-            result_probabilities[name] = prior * likelihood / denominator
+            if only_prior:
+                result_probabilities[name] = prior
+            else:
+                result_probabilities[name] = prior * likelihood / denominator
+        return result_probabilities
 
-        return sorted(result_probabilities.items(), key=lambda item: item[1], reverse=True)
-
-    def one_hot_encode_images(self, data: np.ndarray = None, bits_num: int = 8) -> np.ndarray:
-        encoder = OneHotEncoder(categories=[[i for i in range(2 ** bits_num)] for _ in range(data.shape[-1])],
+    def one_hot_encode_images(self, data: np.ndarray = None, amount_of_categories: int = 255) -> np.ndarray:
+        encoder = OneHotEncoder(categories=[[i for i in range(amount_of_categories)] for _ in range(data.shape[-1])],
                                 dtype=bool, handle_unknown='ignore', sparse=False)
         if data is None:
-            data_to_encode = np.floor(self.images_data / (2 ** (8 - bits_num)))
+            data_to_encode = np.floor(self.images_data / amount_of_categories)
         else:
-            data_to_encode = np.floor(data / (2 ** (8 - bits_num)))
+            data_to_encode = np.floor(data / amount_of_categories)
         encoded_pixel_features = encoder.fit_transform(data_to_encode)
         return encoded_pixel_features
 
@@ -124,22 +136,15 @@ class BayesInference:
 
 if __name__ == '__main__':
 
-    input_data_paths = read_data('/Users/hwdowiak/Desktop/inzynierka/data/final_photos')
+    input_data_paths = read_data('/Users/hwdowiak/Desktop/inzynierka/data/final_photos_all', only_dirs=False)
+    input_data_paths_heatmaps = read_data('/Users/hwdowiak/Desktop/inzynierka/data/heatmaps/', only_dirs=False)
     all_diseases = set()
     for dir in input_data_paths:
         for disease in dir[1]:
             all_diseases.add(disease)
     enumerated_diseases = {disease: i for i, disease in enumerate(all_diseases)}
-    bi = BayesInference(disease_categories=enumerated_diseases, age_categories={'junior': 0, 'adult': 1, 'senior': 2})
 
-    for path, disease, age_category in input_data_paths:
-        bi.load_data_with_path(image_directory_path=path, age_on_images=age_category, diseases=disease, load_heatmap=True)
+    print(len(input_data_paths_heatmaps))
+    print(len(input_data_paths))
 
-    new_img_path = '/Users/hwdowiak/Desktop/inzynierka/data/test/Tucker-1-e1639748696180.jpeg'
 
-    result = bi.get_diseases_probabilities(new_image_path=new_img_path,
-                                           encode_bits_num=2,
-                                           similarity_threshold=0.9,
-                                           pooling_slice_area=2,
-                                           pooling_function=np.max)
-    print(result)

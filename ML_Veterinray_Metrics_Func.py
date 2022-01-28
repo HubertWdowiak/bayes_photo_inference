@@ -26,10 +26,10 @@ import string
 
 
 ## Load model
-model = tf.keras.models.load_model("/home/data/data/kodeiri/ML_project/saved_model/my_model4")
+model = tf.keras.models.load_model("/Users/hwdowiak/Desktop/inzynierka/data/my_model4")
 ## Load detector libraries
-detector = dlib.cnn_face_detection_model_v1('/home/data/data/kodeiri/ML_project/dogHeadDetector.dat')
-predictor = dlib.shape_predictor('/home/data/data/kodeiri/ML_project/landmarkDetector.dat')
+detector = dlib.cnn_face_detection_model_v1('/Users/hwdowiak/Desktop/inzynierka/data/dogHeadDetector.dat')
+predictor = dlib.shape_predictor('/Users/hwdowiak/Desktop/inzynierka/data/landmarkDetector.dat')
 CATEGORIES = ["Adult", "Senior", "Young"]
 
 
