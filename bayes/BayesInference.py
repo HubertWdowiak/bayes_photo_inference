@@ -5,6 +5,7 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
+from math import fabs
 import os
 
 
@@ -69,15 +70,17 @@ class BayesInference:
         self.diseases_data = np.vstack([self.diseases_data, diseases_data])
 
     def get_distribution(self, new_image_encoded: np.ndarray, encoded_images_data: np.ndarray,
-                         similarity_threshold: float = 0.9) -> float:
-        different_pixels = encoded_images_data ^ new_image_encoded
+                         similarity_threshold: float = 0.9, brightness_margin: int = 10) -> float:
+        # different_pixels = encoded_images_data ^ new_image_encoded
+        different_pixels = np.sqrt(
+            (encoded_images_data - new_image_encoded) * (encoded_images_data - new_image_encoded)) > brightness_margin
         similarity = 1 - np.sum(different_pixels, axis=1) / encoded_images_data.shape[1]
         similar_photos = similarity > similarity_threshold
         if encoded_images_data.shape[0] > 0:
             return np.sum(similar_photos) / encoded_images_data.shape[0] + 1e-2
         return 1e-2
 
-    def get_diseases_probabilities(self, new_image_path: str, encoding_categories: int = 8,
+    def get_diseases_probabilities(self, new_image_path: str, brightness_margin: int = 8,
                                    similarity_threshold: float = 0.9, pooling_slice_area: int = 1,
                                    pooling_function=np.max, only_prior: bool = False):
 
@@ -91,19 +94,20 @@ class BayesInference:
         images_data_pooled = images_data_pooled.reshape(images_data_pooled.shape[0], -1)
 
         new_image_encoded_data = self.one_hot_encode_images(data=new_image_pooled,
-                                                            amount_of_categories=encoding_categories)
+                                                            amount_of_categories=brightness_margin)
         encoded_images_data = self.one_hot_encode_images(data=images_data_pooled,
-                                                         amount_of_categories=encoding_categories)
+                                                         amount_of_categories=brightness_margin)
 
         result_probabilities = {}
-        denominator = self.get_distribution(new_image_encoded_data, encoded_images_data, similarity_threshold)
+        denominator = self.get_distribution(new_image_encoded_data, encoded_images_data, similarity_threshold,
+                                            brightness_margin)
 
         for disease in self._get_all_diseases_combinations():
             name = disease
             indexes = self._get_indexes_by_disease(encoded_images_data, disease_condition=disease)
             prior = len(indexes) / self.diseases_data.shape[0]
             likelihood = self.get_distribution(new_image_encoded_data, encoded_images_data[indexes],
-                                               similarity_threshold)
+                                               similarity_threshold, brightness_margin)
             if only_prior:
                 result_probabilities[name] = prior
             else:
@@ -111,14 +115,15 @@ class BayesInference:
         return result_probabilities
 
     def one_hot_encode_images(self, data: np.ndarray = None, amount_of_categories: int = 255) -> np.ndarray:
-        encoder = OneHotEncoder(categories=[[i for i in range(amount_of_categories)] for _ in range(data.shape[-1])],
-                                dtype=bool, handle_unknown='ignore', sparse=False)
-        if data is None:
-            data_to_encode = np.floor(self.images_data / amount_of_categories)
-        else:
-            data_to_encode = np.floor(data / amount_of_categories)
-        encoded_pixel_features = encoder.fit_transform(data_to_encode)
-        return encoded_pixel_features
+        # encoder = OneHotEncoder(categories=[[i for i in range(amount_of_categories)] for _ in range(data.shape[-1])],
+        #                         dtype=bool, handle_unknown='ignore', sparse=False)
+        # if data is None:
+        #     data_to_encode = np.floor(self.images_data / amount_of_categories)
+        # else:
+        #     data_to_encode = np.floor(data / amount_of_categories)
+        # encoded_pixel_features = encoder.fit_transform(data_to_encode)
+        # return encoded_pixel_features
+        return data
 
     def _get_indexes_by_disease(self, data: np.ndarray, disease_condition: Iterable[str] = ()) -> list[int]:
         indexes = set(range(data.shape[0]))
@@ -136,7 +141,9 @@ class BayesInference:
 
 if __name__ == '__main__':
 
-    input_data_paths = read_data('/Users/hwdowiak/Desktop/inzynierka/data/final_photos_all', only_dirs=False)
+    from sklearn.model_selection import train_test_split
+
+    input_data_paths = read_data('/Users/hwdowiak/Desktop/inzynierka/data/final_photos', only_dirs=False)
     input_data_paths_heatmaps = read_data('/Users/hwdowiak/Desktop/inzynierka/data/heatmaps/', only_dirs=False)
     all_diseases = set()
     for dir in input_data_paths:
@@ -144,7 +151,42 @@ if __name__ == '__main__':
             all_diseases.add(disease)
     enumerated_diseases = {disease: i for i, disease in enumerate(all_diseases)}
 
-    print(len(input_data_paths_heatmaps))
-    print(len(input_data_paths))
+    train_paths, test_paths = train_test_split(input_data_paths, random_state=42)
+    train_paths_heatmaps, test_paths_heatmaps = train_test_split(input_data_paths_heatmaps, random_state=42)
 
+    bi_heatmaps = BayesInference(disease_categories=enumerated_diseases,
+                                 age_categories={'junior': 0, 'adult': 1, 'senior': 2})
+    for path, disease, age_category in train_paths_heatmaps:
+        bi_heatmaps.load_data_with_path(image_directory_path=path, age_on_images=age_category, diseases=disease,
+                                        load_heatmap=False)
 
+    bi = BayesInference(disease_categories=enumerated_diseases, age_categories={'junior': 0, 'adult': 1, 'senior': 2})
+
+    predictions = []
+    prior_based_predicitons = []
+    diseases = []
+
+    for brightness_margin in [5, 10, 20, 30]:
+        for encoding_cats in [2, 4, 8, 16]:
+            for sim_threshold in [0.7, 0.8, 0.9, 0.95]:
+                for size in [2, 5, 10, 20]:
+                    for func in [np.max, np.min, np.mean, np.median]:
+                        for path, disease, age_category in test_paths_heatmaps:
+                            result = bi_heatmaps.get_diseases_probabilities(new_image_path=path,
+                                                                            similarity_threshold=sim_threshold,
+                                                                            pooling_slice_area=size,
+                                                                            pooling_function=func,
+                                                                            brightness_margin=brightness_margin)
+                            result_prior_based = bi_heatmaps.get_diseases_probabilities(new_image_path=path,
+                                                                                        similarity_threshold=sim_threshold,
+                                                                                        pooling_slice_area=size,
+                                                                                        pooling_function=func,
+                                                                                        only_prior=True,
+                                                                                        brightness_margin=brightness_margin)
+                            predictions.append(result)
+                            prior_based_predicitons.append(result_prior_based)
+                            diseases.append((*disease,))
+                        f1 = weighted_f_score(predictions, diseases)
+                        f1_prior_based = weighted_f_score(prior_based_predicitons, diseases)
+                        print(
+                            f'heatmap_score={f1}, prior-based-score={f1_prior_based}, area_size={size}, function={np.max.__name__}, sim_threshold={sim_threshold}, brightness_margin={brightness_margin}')
